@@ -1,3 +1,8 @@
+use std::fs;
+use std::io::Write;
+use std::path::Path;
+use std::process;
+
 use anyhow::{Context, Result, bail};
 use async_openai::Client;
 use async_openai::types::chat::{
@@ -9,17 +14,25 @@ use async_openai::types::chat::{
 };
 use clap::Parser;
 use serde_json::{Value, json};
-use std::io::Write;
-use std::path::Path;
-use std::process;
+use tracing_subscriber::{
+    EnvFilter, Registry, fmt::layer, layer::SubscriberExt, util::SubscriberInitExt,
+};
 
 use chris_code::{Args, get_model, get_openai_config};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    fs::create_dir_all("./logs")?;
+    let log_file = fs::File::create("./logs/app.log")?;
+    let file_layer = layer().with_writer(log_file);
+    let console_layer = layer();
+
+    Registry::default()
+        .with(EnvFilter::from_default_env())
+        .with(file_layer)
+        .with(console_layer)
         .init();
+
     let args = Args::parse();
 
     let config = get_openai_config()?;
