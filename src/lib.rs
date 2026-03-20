@@ -41,8 +41,8 @@ pub fn get_model(args: &Args) -> String {
         .unwrap_or_else(|| match env::var("MODEL") {
             Ok(model) => model.clone(),
             Err(err) => {
-                warn!("Using openrouter/hunter-alpha as no model set via arg or env var ({err})");
-                "openrouter/hunter-alpha".to_string()
+                warn!("Using nvidia/nemotron-3-super-120b-a12b:free as no model set via arg or env var ({err})");
+                "nvidia/nemotron-3-super-120b-a12b:free".to_string()
             }
         })
 }
