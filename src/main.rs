@@ -1,6 +1,7 @@
 mod events;
 mod state;
 mod tools;
+mod ui;
 
 use state::AppState;
 
