@@ -32,7 +32,7 @@ pub struct ToolResponse {
 pub struct AppState {
     pub messages: Vec<Message>,
     pub streaming_response: Option<String>,
-    mode: Mode,
+    pub mode: Mode,
 }
 
 impl AppState {
