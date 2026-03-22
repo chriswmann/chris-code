@@ -3,53 +3,58 @@ use std::path::Path;
 use std::process;
 
 use anyhow::{Context, Result};
-use async_openai::types::chat::{ChatCompletionMessageToolCall, ChatCompletionTool, FunctionObjectArgs};
 use serde_json::{Value, json};
 
+use crate::state::{ToolCall, ToolResponse};
 
-fn call_read_tool<'tool_call>(
-    tool_call: &'tool_call ChatCompletionMessageToolCall,
-    args: &Value,
-    function_responses: &mut Vec<(&'tool_call ChatCompletionMessageToolCall, Value)>,
-) -> Result<()> {
-    let file_path = args["file_path"]
+pub fn execute(call: &ToolCall) -> ToolResponse {
+    let content = match call.tool_name.as_str() {
+        "Read" => match read_file(call) {
+            Ok(response) => response,
+            Err(err) => json!(format!("Tool call failed: {err}")),
+        },
+        "Write" => match write_file(call) {
+            Ok(response) => response,
+            Err(err) => json!(format!("Tool call failed: {err}")),
+        },
+        "Bash" => match bash(call) {
+            Ok(response) => response,
+            Err(err) => json!(format!("Tool call failed: {err}")),
+        },
+        _ => json!(format!("Unknown tool: {}", call.tool_name)),
+    };
+    ToolResponse {
+        tool_call_id: call.tool_call_id.clone(),
+        tool_name: call.tool_name.clone(),
+        content,
+    }
+}
+
+fn read_file(call: &ToolCall) -> Result<Value> {
+    let file_path = call.tool_input["file_path"]
         .as_str()
         .context("Should have a `file_path` argument.")?;
     let file_contents = read_file_to_string(file_path)?;
-    eprintln!("file contents: {file_contents}");
-    let file_contents = json!(&file_contents);
-    function_responses.push((tool_call, file_contents));
-    Ok(())
+    Ok(json!(file_contents))
 }
 
-fn call_write_tool<'tool_call>(
-    tool_call: &'tool_call ChatCompletionMessageToolCall,
-    args: &Value,
-    function_responses: &mut Vec<(&'tool_call ChatCompletionMessageToolCall, Value)>,
-) -> Result<()> {
-    let file_path = args["file_path"]
+fn write_file(call: &ToolCall) -> Result<Value> {
+    let file_path = call.tool_input["file_path"]
         .as_str()
         .context("Should have a `file_path` argument.")?;
-    let content = args["content"]
+    let content = call.tool_input["content"]
         .as_str()
         .context("Should have a `content` argument.")?;
     write_to_file(file_path, content)?;
-    let new_file_value = json!(content);
-    function_responses.push((tool_call, new_file_value));
-    Ok(())
+    Ok(json!(format!("File written to {file_path} successfully")))
 }
 
-fn call_bash_tool<'tool_call>(
-    tool_call: &'tool_call ChatCompletionMessageToolCall,
-    args: &Value,
-    function_responses: &mut Vec<(&'tool_call ChatCompletionMessageToolCall, Value)>,
-) -> Result<()> {
-    let command = args["command"]
+fn bash(call: &ToolCall) -> Result<Value> {
+    let command = call.tool_input["command"]
         .as_str()
         .context("Should have a `command` argument.")?;
     let output = execute_bash_command(command)?;
-    function_responses.push((tool_call, json!(output)));
-    Ok(())
+    Ok(json!(output))
 }
 
 fn read_file_to_string(path: impl AsRef<Path>) -> Result<String> {
@@ -72,19 +77,4 @@ fn execute_bash_command(command: &str) -> Result<String> {
     let stdout = String::from_utf8_lossy(output.stdout.trim_ascii());
     let stderr = String::from_utf8_lossy(output.stderr.trim_ascii());
     Ok(format!("stdout:{stdout}\nstderr:{stderr}"))
-}
-
-fn tool_definition_factory(
-    name: &str,
-    description: &str,
-    parameters: Value,
-) -> Result<ChatCompletionTool> {
-    let chat_completion_tool = ChatCompletionTool {
-        function: FunctionObjectArgs::default()
-            .name(name)
-            .description(description)
-            .parameters(parameters)
-            .build()?,
-    };
-    Ok(chat_completion_tool)
 }
