@@ -5,7 +5,7 @@ use std::sync::mpsc::Sender;
 /// Runs in a background thread. Reads crossterm events and sends them
 /// through the channel. This function blocks forever (or until the channel
 /// is closed).
-pub fn run(tx: Sender<AppEvent>) {
+pub fn run(tx: &Sender<AppEvent>) {
     loop {
         // crossterm::eent::read() blocks until a key is pressed
         // or a terminal event occurs.

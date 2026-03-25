@@ -45,9 +45,9 @@ pub async fn run(tx: Sender<AppEvent>, args: Args) -> Result<()> {
                 if let ChatCompletionMessageToolCalls::Function(tool_call) = tool_call_enum.clone()
                 {
                     let tc = ToolCall {
-                        tool_call_id: tool_call.id.clone(),
-                        tool_name: tool_call.function.name.clone(),
-                        tool_input: json!(tool_call.function.arguments),
+                        call_id: tool_call.id.clone(),
+                        name: tool_call.function.name.clone(),
+                        input: json!(tool_call.function.arguments),
                     };
                     tx.send(AppEvent::Llm(LlmEvent::ToolCallRequested(tc.clone())))?;
                     let tool_response = execute(&tc);

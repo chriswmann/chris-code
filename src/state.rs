@@ -17,9 +17,9 @@ pub enum Message {
 /// Describes a tool call the LLM wants to make
 #[derive(Clone)]
 pub struct ToolCall {
-    pub tool_call_id: String,
-    pub tool_name: String,
-    pub tool_input: Value,
+    pub call_id: String,
+    pub name: String,
+    pub input: Value,
 }
 
 /// The result of executing a tool

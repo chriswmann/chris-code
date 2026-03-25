@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::state::{ToolCall, ToolResponse};
 
 pub fn execute(call: &ToolCall) -> ToolResponse {
-    let content = match call.tool_name.as_str() {
+    let content = match call.name.as_str() {
         "Read" => match read_file(call) {
             Ok(response) => response,
             Err(err) => json!(format!("Tool call failed: {err}")),
@@ -21,17 +21,17 @@ pub fn execute(call: &ToolCall) -> ToolResponse {
             Ok(response) => response,
             Err(err) => json!(format!("Tool call failed: {err}")),
         },
-        _ => json!(format!("Unknown tool: {}", call.tool_name)),
+        _ => json!(format!("Unknown tool: {}", call.name)),
     };
     ToolResponse {
-        tool_call_id: call.tool_call_id.clone(),
-        tool_name: call.tool_name.clone(),
+        tool_call_id: call.call_id.clone(),
+        tool_name: call.name.clone(),
         content,
     }
 }
 
 fn read_file(call: &ToolCall) -> Result<Value> {
-    let file_path = call.tool_input["file_path"]
+    let file_path = call.input["file_path"]
         .as_str()
         .context("Should have a `file_path` argument.")?;
     let file_contents = read_file_to_string(file_path)?;
@@ -39,10 +39,10 @@ fn read_file(call: &ToolCall) -> Result<Value> {
 }
 
 fn write_file(call: &ToolCall) -> Result<Value> {
-    let file_path = call.tool_input["file_path"]
+    let file_path = call.input["file_path"]
         .as_str()
         .context("Should have a `file_path` argument.")?;
-    let content = call.tool_input["content"]
+    let content = call.input["content"]
         .as_str()
         .context("Should have a `content` argument.")?;
     write_to_file(file_path, content)?;
@@ -50,7 +50,7 @@ fn write_file(call: &ToolCall) -> Result<Value> {
 }
 
 fn bash(call: &ToolCall) -> Result<Value> {
-    let command = call.tool_input["command"]
+    let command = call.input["command"]
         .as_str()
         .context("Should have a `command` argument.")?;
     let output = execute_bash_command(command)?;

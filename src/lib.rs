@@ -1,8 +1,4 @@
-use anyhow::Result;
-use async_openai::config::OpenAIConfig;
 use clap::Parser;
-use std::env;
-use tracing::warn;
 
 #[derive(Parser)]
 #[command(author, version, about)]

@@ -30,7 +30,7 @@ fn render_messages(frame: &mut Frame, area: Rect, state: &AppState) {
                 lines.push(format!("Agent: {text}"));
             }
             Message::ToolCall(tc) => {
-                lines.push(format!("🔧 Tool call: {}", tc.tool_name));
+                lines.push(format!("🔧 Tool call: {}", tc.name));
             }
             Message::ToolResponse(tr) => {
                 lines.push(format!("📎 Tool response: {}", tr.tool_name));
@@ -57,4 +57,5 @@ fn render_input_bar(frame: &mut Frame, area: Rect) {
         .style(Style::default().fg(Color::DarkGray));
 
     frame.render_widget(input_widget, area);
+    frame.set_cursor_position((area.x + 1, area.y + 1));
 }

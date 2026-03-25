@@ -59,7 +59,7 @@ fn main() -> Result<()> {
 
     // Spawn worker threads
     let input_tx = tx.clone();
-    thread::spawn(move || input::run(input_tx));
+    thread::spawn(move || input::run(&input_tx));
 
     let llm_tx = tx.clone();
     thread::spawn(move || llm::run(llm_tx, args));

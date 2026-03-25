@@ -33,13 +33,13 @@ pub enum AppCommand {
 /// Process an event and update the application state accordingly.
 pub fn handle(state: &mut AppState, event: AppEvent) {
     match event {
-        AppEvent::Input(input_event) => handle_input(state, input_event),
+        AppEvent::Input(input_event) => handle_input(state, &input_event),
         AppEvent::Llm(llm_event) => handle_llm(state, llm_event),
-        AppEvent::App(app_command) => handle_app(state, app_command),
+        AppEvent::App(app_command) => handle_app(state, &app_command),
     }
 }
 
-fn handle_input(state: &mut AppState, event: InputEvent) {
+fn handle_input(state: &mut AppState, event: &InputEvent) {
     // For now, just handle Ctrl+C to quit
     if let InputEvent::Key(key_event) = event
         && key_event.modifiers.contains(KeyModifiers::CONTROL)
@@ -79,7 +79,7 @@ fn handle_llm(state: &mut AppState, event: LlmEvent) {
     }
 }
 
-fn handle_app(state: &mut AppState, command: AppCommand) {
+fn handle_app(state: &mut AppState, command: &AppCommand) {
     match command {
         AppCommand::Quit => {
             state.mode = Mode::Exiting;
