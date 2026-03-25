@@ -40,12 +40,37 @@ pub fn handle(state: &mut AppState, event: AppEvent) {
 }
 
 fn handle_input(state: &mut AppState, event: &InputEvent) {
-    // For now, just handle Ctrl+C to quit
-    if let InputEvent::Key(key_event) = event
-        && key_event.modifiers.contains(KeyModifiers::CONTROL)
-        && key_event.code == KeyCode::Char('c')
-    {
-        state.mode = Mode::Exiting;
+    match event {
+        InputEvent::Key(key_event) => match key_event.code {
+            KeyCode::Char('c') => {
+                if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+                    state.mode = Mode::Exiting;
+                } else {
+                    state
+                        .user_input_buffer
+                        .push(key_event.code.as_char().unwrap());
+                }
+            }
+            KeyCode::Backspace => _ = state.user_input_buffer.pop(),
+            KeyCode::Enter => {
+                state
+                    .messages
+                    .push(Message::User(state.user_input_buffer.clone()));
+                match state.main_tx.send(state.user_input_buffer.clone()) {
+                    Ok(()) => {}
+                    Err(err) => {
+                        // In this case we'll display a message in the UI to allow the user to
+                        // copy and paste any text they want before closing the app.
+                        state.messages.push(Message::Agent(format!(
+                            "Internal error: LLM thread died ({err})"
+                        )));
+                    }
+                }
+                state.user_input_buffer.clear();
+            }
+            _ => {} // Ignore for now
+        },
+        InputEvent::Resize(_x, _y) => {} // Ignore for now
     }
 }
 

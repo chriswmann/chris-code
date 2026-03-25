@@ -15,7 +15,7 @@ pub fn render(frame: &mut Frame, state: &AppState) {
         .split(frame.area());
 
     render_messages(frame, chunks[0], state);
-    render_input_bar(frame, chunks[1]);
+    render_input_bar(frame, chunks[1], state);
 }
 
 fn render_messages(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -51,11 +51,14 @@ fn render_messages(frame: &mut Frame, area: Rect, state: &AppState) {
     frame.render_widget(messages_widget, area);
 }
 
-fn render_input_bar(frame: &mut Frame, area: Rect) {
-    let input_widget = Paragraph::new("Type your message...")
+fn render_input_bar(frame: &mut Frame, area: Rect, state: &AppState) {
+    let input_widget = Paragraph::new(state.user_input_buffer.clone())
         .block(Block::default().borders(Borders::ALL).title("Input"))
         .style(Style::default().fg(Color::DarkGray));
 
     frame.render_widget(input_widget, area);
-    frame.set_cursor_position((area.x + 1, area.y + 1));
+    frame.set_cursor_position((
+        area.x + 1,
+        area.y + 1 + state.user_input_buffer.len() as u16,
+    ));
 }

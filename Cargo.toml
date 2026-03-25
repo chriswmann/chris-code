@@ -7,10 +7,12 @@ rust-version = "1.92"
 
 [dependencies]
 tokio = { version = "1", features = [
+  "fs",
   "macros",
+  "process",
   "rt-multi-thread",
 ] } # async runtime
-async-openai = { version = "=0.32.4", features = [
+async-openai = { version = "=0.34.0", features = [
   "byot",
   "chat-completion",
   "response-types",

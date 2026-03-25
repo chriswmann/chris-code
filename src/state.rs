@@ -1,4 +1,5 @@
 use serde_json::Value;
+use tokio::sync::mpsc::UnboundedSender;
 
 /// The running mode of the application
 pub enum Mode {
@@ -32,14 +33,18 @@ pub struct ToolResponse {
 /// The complete application state. Only the main thread owns this.
 pub struct AppState {
     pub messages: Vec<Message>,
+    pub main_tx: UnboundedSender<String>,
+    pub user_input_buffer: String,
     pub streaming_response: Option<String>,
     pub mode: Mode,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(main_tx: UnboundedSender<String>, user_input_buffer: &str) -> Self {
         Self {
             messages: Vec::new(),
+            main_tx,
+            user_input_buffer: user_input_buffer.into(),
             streaming_response: None,
             mode: Mode::Running,
         }

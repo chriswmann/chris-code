@@ -16,6 +16,7 @@ use ratatui::{Terminal, prelude::CrosstermBackend};
 use state::AppState;
 
 use std::{fs, panic, sync::mpsc, thread};
+use tracing::warn;
 use tracing_subscriber::{
     EnvFilter, Registry, fmt::layer, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -38,6 +39,11 @@ fn main() -> Result<()> {
     // Parse args
     let args = Args::parse();
 
+    let model = args.model.unwrap_or_else(|| {
+        warn!("Using nvidia/nemotron-3-super-120b-a12b:free as no model set via CLI argument");
+        "nvidia/nemotron-3-super-120b-a12b:free".to_string()
+    });
+
     // Setup the terminal
     enable_raw_mode()?;
     let original_hook = panic::take_hook();
@@ -51,18 +57,29 @@ fn main() -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    // Create the app state
-    let mut app_state = AppState::new();
-
     // Create the channel for worker threads to send messages to
-    let (tx, rx) = mpsc::channel::<AppEvent>();
+    let (tx, main_rx) = mpsc::channel::<AppEvent>();
 
     // Spawn worker threads
     let input_tx = tx.clone();
     thread::spawn(move || input::run(&input_tx));
 
+    // Create the channel for main to send messages to the LLM
+    let (user_tx, user_rx) = tokio::sync::mpsc::unbounded_channel();
+
     let llm_tx = tx.clone();
-    thread::spawn(move || llm::run(llm_tx, args));
+    thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        if let Err(err) = rt.block_on(llm::run(model, llm_tx, user_rx)) {
+            tracing::error!("LLM thread failed: {err:?}");
+        }
+    });
+
+    // Create the app state
+    let mut app_state = AppState::new(user_tx, &args.prompt);
 
     // Run the event loop
     loop {
@@ -70,7 +87,7 @@ fn main() -> Result<()> {
         terminal.draw(|frame| ui::render(frame, &app_state))?;
 
         // Wait for the next event (blocks)
-        let event = rx.recv()?;
+        let event = main_rx.recv()?;
 
         // Update state based on the event
         events::handle(&mut app_state, event);
@@ -79,11 +96,10 @@ fn main() -> Result<()> {
         if matches!(app_state.mode, Mode::Exiting) {
             break;
         }
-
-        // Restore the terminal
-        disable_raw_mode()?;
-        execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     }
+    // Restore the terminal
+    disable_raw_mode()?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
 
     Ok(())
 }

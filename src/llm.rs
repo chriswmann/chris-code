@@ -11,36 +11,40 @@ use async_openai::types::chat::{
     ChatCompletionTools, CreateChatCompletionRequest, CreateChatCompletionRequestArgs,
     FunctionObjectArgs,
 };
-use chris_code::Args;
 use serde_json::{Value, json};
 use std::env;
 use std::sync::mpsc::Sender;
-use tracing::warn;
+use tokio::sync::mpsc::UnboundedReceiver;
 
-pub async fn run(tx: Sender<AppEvent>, args: Args) -> Result<()> {
+pub async fn run(
+    model: String,
+    tx: Sender<AppEvent>,
+    mut rx: UnboundedReceiver<String>,
+) -> Result<()> {
     let config = get_openai_config()?;
 
     let client = Client::with_config(config);
-    let model = get_model(&args);
 
-    let user_prompt = args.prompt;
     let tools = load_tools()?;
     let mut request = CreateChatCompletionRequestArgs::default()
         .max_completion_tokens(128_u32)
-        .model(model)
-        .messages(ChatCompletionRequestUserMessage::from(user_prompt))
-        .tools(tools)
+        .model(&model)
+        .tools(tools.clone())
         .build()?;
     loop {
+        let user_prompt = rx.recv().await.unwrap();
+        request.messages.push(ChatCompletionRequestMessage::User(
+            ChatCompletionRequestUserMessage::from(user_prompt),
+        ));
         let response = client.chat().create(request.clone()).await?;
         let response_message = response.choices.first().context("No choices")?;
 
         if let Some(ref tool_calls) = response_message.message.tool_calls {
             let num_tool_calls = &tool_calls.len();
-            let mut tool_calls: Vec<ChatCompletionMessageToolCalls> =
+            let mut executed_tool_calls: Vec<ChatCompletionMessageToolCalls> =
                 Vec::with_capacity(*num_tool_calls);
             let mut tool_responses = Vec::with_capacity(*num_tool_calls);
-            for tool_call_enum in tool_calls.clone() {
+            for tool_call_enum in executed_tool_calls.clone() {
                 // Extract the function tool call from the enum.
                 if let ChatCompletionMessageToolCalls::Function(tool_call) = tool_call_enum.clone()
                 {
@@ -50,12 +54,12 @@ pub async fn run(tx: Sender<AppEvent>, args: Args) -> Result<()> {
                         input: json!(tool_call.function.arguments),
                     };
                     tx.send(AppEvent::Llm(LlmEvent::ToolCallRequested(tc.clone())))?;
-                    let tool_response = execute(&tc);
-                    tool_calls.push(tool_call_enum.clone());
+                    let tool_response = execute(&tc).await;
+                    executed_tool_calls.push(tool_call_enum.clone());
                     tool_responses.push(tool_response);
                 }
             }
-            append_tool_responses_to_chat(&mut request, &tool_calls, &tool_responses)?;
+            append_tool_responses_to_chat(&mut request, &executed_tool_calls, &tool_responses)?;
         } else if let Some(message) = &response_message.message.content {
             tx.send(AppEvent::Llm(LlmEvent::TokenReceived(message.clone())))?;
             tx.send(AppEvent::Llm(LlmEvent::StreamComplete))?;
@@ -126,19 +130,6 @@ pub fn get_openai_config() -> Result<OpenAIConfig> {
         .with_api_key(api_key);
 
     Ok(config)
-}
-
-#[must_use]
-pub fn get_model(args: &Args) -> String {
-    args.model
-        .clone()
-        .unwrap_or_else(|| match env::var("MODEL") {
-            Ok(model) => model.clone(),
-            Err(err) => {
-                warn!("Using nvidia/nemotron-3-super-120b-a12b:free as no model set via arg or env var ({err})");
-                "nvidia/nemotron-3-super-120b-a12b:free".to_string()
-            }
-        })
 }
 
 fn append_tool_responses_to_chat(
