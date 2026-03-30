@@ -16,7 +16,6 @@ use ratatui::{Terminal, prelude::CrosstermBackend};
 use state::AppState;
 
 use std::{fs, panic, sync::mpsc, thread};
-use tracing::warn;
 use tracing_subscriber::{
     EnvFilter, Registry, fmt::layer, layer::SubscriberExt, util::SubscriberInitExt,
 };
@@ -28,21 +27,18 @@ fn main() -> Result<()> {
     fs::create_dir_all("./logs")?;
     let log_file = fs::File::create("./logs/app.log")?;
     let file_layer = layer().with_writer(log_file);
-    let console_layer = layer();
 
     Registry::default()
         .with(EnvFilter::from_default_env())
         .with(file_layer)
-        .with(console_layer)
         .init();
 
     // Parse args
     let args = Args::parse();
 
-    let model = args.model.unwrap_or_else(|| {
-        warn!("Using nvidia/nemotron-3-super-120b-a12b:free as no model set via CLI argument");
-        "nvidia/nemotron-3-super-120b-a12b:free".to_string()
-    });
+    let model = args
+        .model
+        .ok_or_else(|| anyhow::anyhow!("No model set: use the --model arg"))?;
 
     // Setup the terminal
     enable_raw_mode()?;

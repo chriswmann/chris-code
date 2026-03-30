@@ -1,7 +1,7 @@
 use crate::events::{AppEvent, LlmEvent};
 use crate::state::{ToolCall, ToolResponse};
 use crate::tools::execute;
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use async_openai::Client;
 use async_openai::config::OpenAIConfig;
 use async_openai::types::chat::{
@@ -11,10 +11,11 @@ use async_openai::types::chat::{
     ChatCompletionTools, CreateChatCompletionRequest, CreateChatCompletionRequestArgs,
     FunctionObjectArgs,
 };
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::env;
 use std::sync::mpsc::Sender;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tracing::warn;
 
 pub async fn run(
     model: String,
@@ -27,45 +28,80 @@ pub async fn run(
 
     let tools = load_tools()?;
     let mut request = CreateChatCompletionRequestArgs::default()
-        .max_completion_tokens(128_u32)
+        .max_completion_tokens(4096_u32)
         .model(&model)
         .tools(tools.clone())
         .build()?;
     loop {
-        let user_prompt = rx.recv().await.unwrap();
+        let Some(user_prompt) = rx.recv().await else {
+            tracing::info!("Prompt channel closed, shutting down LLM worker");
+            break;
+        };
         request.messages.push(ChatCompletionRequestMessage::User(
             ChatCompletionRequestUserMessage::from(user_prompt),
         ));
-        let response = client.chat().create(request.clone()).await?;
-        let response_message = response.choices.first().context("No choices")?;
+        tracing::info!(
+            "Sending request to API ({} messages in history)",
+            request.messages.len()
+        );
+        tracing::info!(
+            request = ?request,
+        );
+        let mut response = client.chat().create(request.clone()).await?;
+        let mut response_message = response.choices.first().context("No choices")?;
+        tracing::info!(
+            finish_reason = ?response_message.finish_reason,
+            has_tool_calls = response_message.message.tool_calls.is_some(),
+            has_content = response_message.message.content.is_some(),
+            "API response received",
+        );
 
-        if let Some(ref tool_calls) = response_message.message.tool_calls {
-            let num_tool_calls = &tool_calls.len();
-            let mut executed_tool_calls: Vec<ChatCompletionMessageToolCalls> =
-                Vec::with_capacity(*num_tool_calls);
-            let mut tool_responses = Vec::with_capacity(*num_tool_calls);
-            for tool_call_enum in tool_calls.clone() {
-                // Extract the function tool call from the enum.
-                if let ChatCompletionMessageToolCalls::Function(tool_call) = tool_call_enum.clone()
-                {
-                    let tc = ToolCall {
-                        call_id: tool_call.id.clone(),
-                        name: tool_call.function.name.clone(),
-                        input: json!(tool_call.function.arguments),
-                    };
-                    tx.send(AppEvent::Llm(LlmEvent::ToolCallRequested(tc.clone())))?;
-                    let tool_response = execute(&tc).await;
-                    executed_tool_calls.push(tool_call_enum.clone());
-                    tool_responses.push(tool_response);
+        // Inner loop to handle tool-call chains
+        loop {
+            if let Some(ref tool_calls) = response_message.message.tool_calls {
+                let num_tool_calls = tool_calls.len();
+                tracing::info!(count = num_tool_calls, "Tool calls requested");
+                let mut executed_tool_calls = Vec::with_capacity(num_tool_calls);
+                let mut tool_responses = Vec::with_capacity(num_tool_calls);
+                for tool_call_enum in tool_calls.clone() {
+                    if let ChatCompletionMessageToolCalls::Function(tool_call) =
+                        tool_call_enum.clone()
+                    {
+                        tracing::info!(
+                            name = ?tool_call.function.name,
+                            args = ?tool_call.function.arguments,
+                            id = ?tool_call.id,
+                            "Executing tool call",
+                        );
+                        let tc = ToolCall {
+                            call_id: tool_call.id.clone(),
+                            name: tool_call.function.name.clone(),
+                            input: serde_json::from_str(&tool_call.function.arguments)?,
+                        };
+                        tx.send(AppEvent::Llm(LlmEvent::ToolCallRequested(tc.clone())))?;
+                        let tool_response = execute(&tc).await;
+                        tracing::debug!(
+                            content = %tool_response.content,
+                            "Tool response",
+                        );
+                        executed_tool_calls.push(tool_call_enum.clone());
+                        tool_responses.push(tool_response);
+                    }
                 }
+                append_tool_responses_to_chat(&mut request, &executed_tool_calls, &tool_responses)?;
+                tracing::info!("Appended tool responses, looping back to API");
+                response = client.chat().create(request.clone()).await?;
+                response_message = response.choices.first().context("No choices")?;
+            } else if let Some(message) = &response_message.message.content {
+                tracing::info!(length = message.len(), "Got text response from model");
+                tx.send(AppEvent::Llm(LlmEvent::StreamStart))?;
+                tx.send(AppEvent::Llm(LlmEvent::TokenReceived(message.clone())))?;
+                tx.send(AppEvent::Llm(LlmEvent::StreamComplete))?;
+                break;
+            } else {
+                warn!(response = ?response_message, "Response had neither tool calls nor content");
+                break;
             }
-            append_tool_responses_to_chat(&mut request, &executed_tool_calls, &tool_responses)?;
-        } else if let Some(message) = &response_message.message.content {
-            tx.send(AppEvent::Llm(LlmEvent::StreamStart))?;
-            tx.send(AppEvent::Llm(LlmEvent::TokenReceived(message.clone())))?;
-            tx.send(AppEvent::Llm(LlmEvent::StreamComplete))?;
-        } else {
-            bail!("Response had neither tool calls nor content");
         }
     }
     Ok(())
