@@ -57,8 +57,7 @@ fn render_input_bar(frame: &mut Frame, area: Rect, state: &AppState) {
         .style(Style::default().fg(Color::DarkGray));
 
     frame.render_widget(input_widget, area);
-    frame.set_cursor_position((
-        area.x + 1,
-        area.y + 1 + state.user_input_buffer.len() as u16,
-    ));
+    let max_x = area.x + area.width.saturating_sub(2); // Sub 2 to stay within the border
+    let cursor_x = (area.x + 1 + state.user_input_buffer.len() as u16).max(max_x);
+    frame.set_cursor_position((cursor_x, area.y + 1));
 }

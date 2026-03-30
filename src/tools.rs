@@ -65,7 +65,7 @@ async fn read_file_to_string(path: impl AsRef<Path>) -> Result<String> {
 
 async fn write_to_file(path: impl AsRef<Path>, contents: &str) -> Result<()> {
     let mut file = tokio::fs::File::create(path).await?;
-    file.write(contents.as_bytes()).await?;
+    file.write_all(contents.as_bytes()).await?;
     Ok(())
 }
 

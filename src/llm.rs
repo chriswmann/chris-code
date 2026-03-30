@@ -44,7 +44,7 @@ pub async fn run(
             let mut executed_tool_calls: Vec<ChatCompletionMessageToolCalls> =
                 Vec::with_capacity(*num_tool_calls);
             let mut tool_responses = Vec::with_capacity(*num_tool_calls);
-            for tool_call_enum in executed_tool_calls.clone() {
+            for tool_call_enum in tool_calls.clone() {
                 // Extract the function tool call from the enum.
                 if let ChatCompletionMessageToolCalls::Function(tool_call) = tool_call_enum.clone()
                 {
@@ -61,9 +61,9 @@ pub async fn run(
             }
             append_tool_responses_to_chat(&mut request, &executed_tool_calls, &tool_responses)?;
         } else if let Some(message) = &response_message.message.content {
+            tx.send(AppEvent::Llm(LlmEvent::StreamStart))?;
             tx.send(AppEvent::Llm(LlmEvent::TokenReceived(message.clone())))?;
             tx.send(AppEvent::Llm(LlmEvent::StreamComplete))?;
-            break;
         } else {
             bail!("Response had neither tool calls nor content");
         }
