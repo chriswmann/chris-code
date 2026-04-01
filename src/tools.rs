@@ -59,7 +59,7 @@ async fn bash(call: &ToolCall) -> Result<Value> {
 
 async fn read_file_to_string(path: impl AsRef<Path>) -> Result<String> {
     let file_contents = tokio::fs::read_to_string(&path).await?;
-    eprintln!("Read file: {}", path.as_ref().display());
+    tracing::debug!("Read file: {}", path.as_ref().display());
     Ok(file_contents)
 }
 

@@ -42,13 +42,11 @@ pub fn handle(state: &mut AppState, event: AppEvent) {
 fn handle_input(state: &mut AppState, event: &InputEvent) {
     match event {
         InputEvent::Key(key_event) => match key_event.code {
-            KeyCode::Char('c') => {
-                if key_event.modifiers.contains(KeyModifiers::CONTROL) {
+            KeyCode::Char(c) => {
+                if key_event.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
                     state.mode = Mode::Exiting;
                 } else {
-                    state
-                        .user_input_buffer
-                        .push(key_event.code.as_char().unwrap());
+                    state.user_input_buffer.push(c);
                 }
             }
             KeyCode::Backspace => _ = state.user_input_buffer.pop(),
